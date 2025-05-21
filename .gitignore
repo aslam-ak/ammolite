@@ -1,4 +1,8 @@
-logs/**
-references/**
+logs\**
+references\**
+geotech\references\**
+geophsyics\references\**
+gis\references\**
+reporting\references\**
 *.log
 *.tmp
