@@ -1,6 +1,9 @@
 import ast
 import math
-from typing import Any, Iterable, Tuple, Type, Union
+import os
+import sys
+from typing import (Any, Dict, Iterable, List, Literal, Optional, Tuple, Type,
+                    Union)
 
 from scipy import integrate
 
@@ -227,3 +230,174 @@ def transform_parameter(input_param, transform_function, param_name=None, defaul
         expr = f"{transform_function.__name__}({param_str}" + (f", {additional_args}" if additional_args else "") + ")"
         return {'expression': expr}
 
+
+
+def calculate_cross_sectional_area(
+    shape: str,
+    area_type: Literal["total", "inner", "annular"] = "total",
+    outer_diameter: Optional[float] = None,
+    outer_width: Optional[float] = None, 
+    outer_breadth: Optional[float] = None,
+    inner_diameter: Optional[float] = None,
+    inner_width: Optional[float] = None,
+    inner_breadth: Optional[float] = None,
+    flange_width: Optional[float] = None,
+    flange_thickness: Optional[float] = None,
+    web_height: Optional[float] = None,
+    web_thickness: Optional[float] = None,
+    cross_section: Literal["solid", "hollow"] = "solid"
+) -> float:
+    """
+    Calculate cross-sectional area based on shape and area type.
+    
+    :param shape: Shape of the cross-section ('rectangle', 'square', 'circle', 'h_section', 'c_section', 'l_section')
+    :param area_type: Type of area to calculate ('total', 'inner', 'annular')
+    :param outer_diameter: Outer diameter for circular shapes (m)
+    :param outer_width: Outer width for rectangular shapes (m)
+    :param outer_breadth: Outer breadth for rectangular shapes (m)
+    :param inner_diameter: Inner diameter for hollow circular shapes (m)
+    :param inner_width: Inner width for hollow rectangular shapes (m)
+    :param inner_breadth: Inner breadth for hollow rectangular shapes (m)
+    :param flange_width: Width of flange for structural sections (m)
+    :param flange_thickness: Thickness of flange for structural sections (m)
+    :param web_height: Height of web for structural sections (m)
+    :param web_thickness: Thickness of web for structural sections (m)
+    :param cross_section: Type of cross-section ('solid', 'hollow')
+    :return: Calculated area in square meters
+    :raises ValueError: If required parameters for the specified shape are missing
+    """
+    # For inner area calculation, we only need the inner dimensions
+    if area_type == "inner":
+        # Inner area is always 0 for solid sections, H-sections, C-sections, and L-sections
+        if cross_section == "hollow" and shape not in {"h_section", "c_section", "l_section"}:
+            if shape in {"rectangle", "square"} and inner_width and inner_breadth:
+                return inner_width * inner_breadth
+            elif shape == "circle" and inner_diameter:
+                return (math.pi * (inner_diameter ** 2) / 4)
+        return 0
+    
+    # Calculate outer area
+    outer_area = 0
+    if shape == "h_section":
+        if not all([flange_width, flange_thickness, web_height, web_thickness]):
+            raise ValueError("H-section requires flange_width, flange_thickness, web_height, and web_thickness")
+        # H-section area calculation: 2 flanges + 1 web
+        flange_area = 2 * flange_width * flange_thickness
+        web_area = web_height * web_thickness
+        outer_area = flange_area + web_area
+    elif shape == "c_section":
+        if not all([flange_width, flange_thickness, web_height, web_thickness]):
+            raise ValueError("C-section requires flange_width, flange_thickness, web_height, and web_thickness")
+        # C-section area calculation: 2 flanges + 1 web (but on one side)
+        flange_area = 2 * flange_width * flange_thickness
+        web_area = web_height * web_thickness
+        outer_area = flange_area + web_area
+    elif shape == "l_section":
+        if not all([flange_width, flange_thickness, web_height, web_thickness]):
+            raise ValueError("L-section requires flange_width, flange_thickness, web_height, and web_thickness")
+        # L-section area calculation: 1 flange + 1 web
+        flange_area = flange_width * flange_thickness
+        web_area = web_height * web_thickness
+        outer_area = flange_area + web_area
+    elif shape in {"rectangle", "square"}:
+        if not all([outer_width, outer_breadth]):
+            raise ValueError(f"{shape} requires outer_width and outer_breadth for total or annular area")
+        outer_area = outer_width * outer_breadth
+    elif shape == "circle":
+        if not outer_diameter:
+            raise ValueError(f"Circle requires outer_diameter for total or annular area")
+        outer_area = (math.pi * (outer_diameter ** 2) / 4)
+    else:
+        raise ValueError(f"Unsupported shape: {shape}")
+    
+    # Calculate inner area for annular area
+    inner_area = 0
+    if area_type == "annular" and cross_section == "hollow" and shape not in {"h_section", "c_section", "l_section"}:
+        if shape in {"rectangle", "square"} and inner_width and inner_breadth:
+            inner_area = inner_width * inner_breadth
+        elif shape == "circle" and inner_diameter:
+            inner_area = (math.pi * (inner_diameter ** 2) / 4)
+    
+    # Return appropriate area based on type
+    if area_type == "total":
+        return outer_area
+    elif area_type == "annular":
+        return outer_area - inner_area
+    else:
+        # This should never be reached as inner case is handled above
+        raise ValueError(f"Unsupported area_type: {area_type}")
+
+def calculate_perimeter(
+    shape: str, 
+    perimeter_type: Literal["outer", "inner"] = "outer",
+    outer_diameter: Optional[float] = None,
+    outer_width: Optional[float] = None, 
+    outer_breadth: Optional[float] = None,
+    inner_diameter: Optional[float] = None,
+    inner_width: Optional[float] = None,
+    inner_breadth: Optional[float] = None,
+    flange_width: Optional[float] = None,
+    flange_thickness: Optional[float] = None,
+    web_height: Optional[float] = None,
+    web_thickness: Optional[float] = None,
+    cross_section: Literal["solid", "hollow"] = "solid"
+) -> float:
+    """
+    Calculate perimeter based on shape and perimeter type.
+    
+    :param shape: Shape of the cross-section ('rectangle', 'square', 'circle', 'h_section', 'c_section', 'l_section')
+    :param perimeter_type: Type of perimeter to calculate ('outer', 'inner')
+    :param outer_diameter: Outer diameter for circular shapes (m)
+    :param outer_width: Outer width for rectangular shapes (m)
+    :param outer_breadth: Outer breadth for rectangular shapes (m)
+    :param inner_diameter: Inner diameter for hollow circular shapes (m)
+    :param inner_width: Inner width for hollow rectangular shapes (m)
+    :param inner_breadth: Inner breadth for hollow rectangular shapes (m)
+    :param flange_width: Width of flange for structural sections (m)
+    :param flange_thickness: Thickness of flange for structural sections (m)
+    :param web_height: Height of web for structural sections (m)
+    :param web_thickness: Thickness of web for structural sections (m)
+    :param cross_section: Type of cross-section ('solid', 'hollow')
+    :return: Calculated perimeter in meters
+    :raises ValueError: If required parameters for the specified shape are missing
+    """
+    if perimeter_type == "inner":
+        # Inner perimeter is always 0 for solid sections, H-sections, C-sections, and L-sections
+        if cross_section == "hollow" and shape not in {"h_section", "c_section", "l_section"}:
+            if shape in {"rectangle", "square"} and inner_width and inner_breadth:
+                return 2 * (inner_width + inner_breadth)
+            elif shape == "circle" and inner_diameter:
+                return math.pi * inner_diameter
+        return 0
+    
+    # Calculate outer perimeter
+    if shape == "h_section":
+        if not all([flange_width, flange_thickness, web_height, web_thickness]):
+            raise ValueError("H-section requires flange_width, flange_thickness, web_height, and web_thickness")
+        # Perimeter of H-section
+        return 2 * (2 * flange_width + web_height + 2 * flange_thickness)
+    
+    elif shape == "c_section":
+        if not all([flange_width, flange_thickness, web_height, web_thickness]):
+            raise ValueError("C-section requires flange_width, flange_thickness, web_height, and web_thickness")
+        # Perimeter of C-section
+        return 2 * flange_width + 2 * web_height + 3 * flange_thickness + web_thickness
+    
+    elif shape == "l_section":
+        if not all([flange_width, flange_thickness, web_height, web_thickness]):
+            raise ValueError("L-section requires flange_width, flange_thickness, web_height, and web_thickness")
+        # Perimeter of L-section
+        return 2 * flange_width + web_height + flange_thickness + web_thickness
+    
+    elif shape in {"rectangle", "square"}:
+        if not all([outer_width, outer_breadth]):
+            raise ValueError(f"{shape} requires outer_width and outer_breadth")
+        return 2 * (outer_width + outer_breadth)
+    
+    elif shape == "circle":
+        if not outer_diameter:
+            raise ValueError("Circle requires outer_diameter")
+        return math.pi * outer_diameter
+    
+    else:
+        raise ValueError(f"Unsupported shape: {shape}")
