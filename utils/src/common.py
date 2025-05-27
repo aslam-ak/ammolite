@@ -187,3 +187,43 @@ def compute_average_value(value: Union[int, float, tuple, str],
 
     # Unsupported type
     raise ValueError(f"Unsupported parameter type: {type(value).__name__}")
+
+
+
+def transform_parameter(input_param, transform_function, param_name=None, default=None, additional_params=None):
+    """
+    Generically transform a parameter value, handling constant values, gradients, and expressions.
+    Supports multi-variable transform functions by passing additional parameters.
+    
+    Args:
+        input_param: The parameter to transform (can be constant, gradient, or expression)
+        transform_function: Function to apply to the parameter value(s)
+        param_name: Name of the parameter (for use in expressions)
+        default: Default value if parameter is None
+        additional_params: Dictionary of additional parameters to pass to the transform function
+        
+    Returns:
+        Transformed parameter with same structure as input (constant, gradient, or expression)
+    """
+    if input_param is None:
+        return default
+    
+    # Prepare additional parameters for the transform function
+    additional_params = additional_params or {}
+    
+    if isinstance(input_param, (int, float)):
+        # If parameter is a constant value
+        return transform_function(input_param, **additional_params)
+    elif isinstance(input_param, dict) and 'top' in input_param and 'bottom' in input_param:
+        # If parameter is a gradient with top and bottom values
+        return {
+            'top': transform_function(input_param['top'], **additional_params),
+            'bottom': transform_function(input_param['bottom'], **additional_params)
+        }
+    else:
+        # For expressions, create a representation that includes all parameters
+        param_str = f"{param_name}" if param_name else "x"
+        additional_args = ", ".join(f"{k}={v}" for k, v in additional_params.items())
+        expr = f"{transform_function.__name__}({param_str}" + (f", {additional_args}" if additional_args else "") + ")"
+        return {'expression': expr}
+
